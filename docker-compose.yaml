@@ -17,11 +17,18 @@ services:
     volumes:
       - redis_volume:/data
 
+  chrome:
+    image: seleniarm/standalone-chromium:113.0
+    shm_size: '256mb'
+    ports:
+      - '4444:4444'
+
   web:
     build: .
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
+      SELENIUM_DRIVER_URL: http://chrome:4444/wd/hub
     volumes:
       - .:/myapp
     ports:
@@ -32,6 +39,7 @@ services:
     depends_on:
       - db
       - redis
+      - chrome
 
 volumes:
   postgres_volume:

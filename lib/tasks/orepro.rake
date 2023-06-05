@@ -2,48 +2,43 @@ require 'open-uri'
 require 'nokogiri'
 
 namespace :orepro do
-  desc '俺プロのランキングページからユーザリストを取得する'
-  task :get_users, ['holding_date'] => :environment do |_task, args|
-    holding_date = args[:holding_date]
-
-    html = URI.open('https://orepro.netkeiba.com/ranking/api_get_season_ranking.html?page=2&limit=100').read
-    doc = Nokogiri::HTML.parse(html)
-    json = JSON.parse(doc)
-    user_ids = json['ranking_list'].map { |v| v["sns_user_id"] }
-
-    user_ids.each do |user_id|
-      user = User.find_or_initialize_by(id: user_id)
-      user.save!
-      GetPredictIdsJob.perform_later(user.id, holding_date)
-    end
-  end
-
   desc 'netkeibaのトップページからレースリストを取得する'
   task :get_races, ['holding_date'] => :environment do |_task, args|
-    holding_date = args[:holding_date]
-
-    html = URI.open("https://race.netkeiba.com/top/race_list_sub.html?kaisai_date=#{holding_date}").read
-    doc = Nokogiri::HTML.parse(html)
-
-    races = doc.css('dl.RaceList_DataList').map do |hold_element|
-      race_place = hold_element.css('p.RaceList_DataTitle').text.strip.split(' ')[1]
-
-      hold_element.css('li.RaceList_DataItem').map do |element|
-        race_id = element.at_css('a').attr('href').delete('^0-9')
-        race_number = element.at_css('div.Race_Num').text.strip.to_i
-        race_name = element.at_css('div.RaceList_ItemTitle').text.strip
-
-        Race.new(
-          id: race_id,
-          number: race_number,
-          name: race_name,
-          place: race_place,
-          date: Date.parse(holding_date)
-        )
-      end
-    end.flatten
+    # レース情報一覧を取得
+    races = Orepro::Runner.get_races(args[:holding_date])
 
     # 最大でも36レコードなのでbulk_insertは必要ないと判断
     races.each(&:save!)
+  end
+
+  desc 'netkeibaのレースページから単勝オッズを取得する'
+  task :get_win_odds, ['race_id'] => :environment do |_task, args|
+    # レース情報が存在しない場合はエラー
+    race = Race.find_by(id: args[:race_id])
+    raise StandardError('指定された開催日のレース情報が存在しません') if race.blank?
+
+    # オッズ情報を取得
+    odds = Orepro::Runner.get_odds(race.id)
+
+    # 多くても18件なのでbulk_insertは必要ないと判断
+    odds.each(&:save!)
+  end
+
+  desc '俺プロのランキングページから予想リストを取得する'
+  task :get_predicts, ['holding_date'] => :environment do |_task, args|
+    # レース情報が存在しない場合はエラー
+    race = Race.find_by(date: Date.parse(args[:holding_date]))
+    raise StandardError('指定された開催日のレース情報が存在しません') if race.blank?
+
+    # ユーザ情報一覧を取得
+    users = Orepro::Runner.get_users(100)
+
+    # 多くても100件程度なのでbulk_insertは必要ないと判断
+    users.each(&:save!)
+
+    # ユーザごとの予想を取得するジョブを実行
+    users.each do |user|
+      GetPredictIdsJob.perform_later(user.id, args[:holding_date])
+    end
   end
 end

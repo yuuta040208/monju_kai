@@ -10,9 +10,18 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2023_05_21_075937) do
+ActiveRecord::Schema[7.0].define(version: 2023_06_04_062605) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
+
+  create_table "odds", force: :cascade do |t|
+    t.string "race_id"
+    t.string "horse"
+    t.float "value"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["race_id"], name: "index_odds_on_race_id"
+  end
 
   create_table "predicts", force: :cascade do |t|
     t.string "orepro_predict_id"
@@ -41,6 +50,7 @@ ActiveRecord::Schema[7.0].define(version: 2023_05_21_075937) do
     t.datetime "updated_at", null: false
   end
 
+  add_foreign_key "odds", "races"
   add_foreign_key "predicts", "races"
   add_foreign_key "predicts", "users"
 end
